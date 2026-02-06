@@ -1,0 +1,2 @@
+# Requirements for rpg-utilities local MCP server
+mcp>=1.0.0
