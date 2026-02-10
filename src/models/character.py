@@ -59,6 +59,10 @@ class Character(BaseModel):
     factions: list[FactionMembership] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    creation_in_progress: bool = Field(
+        default=False,
+        description="True while the character is being created; set to False when finalized.",
+    )
     
     def to_doc(self) -> dict:
         """Convert to MongoDB document."""
@@ -71,7 +75,10 @@ class Character(BaseModel):
     
     @classmethod
     def from_doc(cls, doc: dict) -> "Character":
-        """Create from MongoDB document."""
-        if doc.get("_id"):
-            doc["_id"] = str(doc["_id"])
-        return cls(**doc)
+        """Create from MongoDB document. Missing creation_in_progress => False (existing characters)."""
+        d = dict(doc)
+        if d.get("_id"):
+            d["_id"] = str(d["_id"])
+        if "creation_in_progress" not in d:
+            d["creation_in_progress"] = False
+        return cls(**d)

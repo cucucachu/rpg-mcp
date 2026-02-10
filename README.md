@@ -139,13 +139,6 @@ python -m src.server
 | `remove_from_party` | Remove a member |
 | `set_party_leader` | Set the leader |
 
-### Time (3 tools)
-| Tool | Description |
-|------|-------------|
-| `get_game_time` | Get current game time |
-| `set_game_time` | Set game time |
-| `advance_game_time` | Move time forward |
-
 ### Queries (12 tools)
 | Tool | Description |
 |------|-------------|

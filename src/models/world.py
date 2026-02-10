@@ -14,7 +14,10 @@ class World(BaseModel):
     name: str
     description: str = ""
     settings: dict[str, Any] = Field(default_factory=dict)
-    game_time: int = Field(default=0, description="Current game time in seconds since start")
+    creation_in_progress: bool = Field(
+        default=True,
+        description="True while the world is being set up; set to False when the GM calls start_game.",
+    )
     
     def to_doc(self) -> dict:
         """Convert to MongoDB document."""
@@ -27,7 +30,11 @@ class World(BaseModel):
     
     @classmethod
     def from_doc(cls, doc: dict) -> "World":
-        """Create from MongoDB document."""
-        if doc.get("_id"):
-            doc["_id"] = str(doc["_id"])
-        return cls(**doc)
+        """Create from MongoDB document. Ignores legacy game_time. Missing creation_in_progress => False (existing worlds)."""
+        d = dict(doc)
+        if d.get("_id"):
+            d["_id"] = str(d["_id"])
+        d.pop("game_time", None)
+        if "creation_in_progress" not in d:
+            d["creation_in_progress"] = False
+        return cls(**d)

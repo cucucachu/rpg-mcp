@@ -271,9 +271,9 @@ async def test_load_session(db, world_id, character_id, location_id):
     
     data = json.loads(result[0].text)
     
-    # Verify world
+    # Verify world (game_time derived from events/chronicles)
     assert data["world"]["name"] == "Test World"
-    assert data["game_time"]["raw"] == 0
+    assert data["game_time"]["raw"] == 60  # max(event 30, chronicle_end 60)
     assert "formatted" in data["game_time"]
     
     # Verify PC

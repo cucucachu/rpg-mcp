@@ -13,9 +13,78 @@ from ..models.character import Attribute, Skill, CharacterAbility, Status, Facti
 def get_tools() -> tuple[list[Tool], dict[str, callable]]:
     """Return tools and handlers for character management."""
     tools = [
-        Tool(
+            Tool(
+                name="create_npc",
+                description="Create a new NPC (non-player character). Use for world-building NPCs like merchants, quest-givers, allies, enemies, etc. Sets is_player_character=false automatically.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "world_id": {"type": "string", "description": "24-char hex string ID"},
+                        "name": {"type": "string", "description": "NPC name"},
+                        "description": {"type": "string", "description": "NPC description/backstory"},
+                        "location_id": {"type": "string", "description": "24-char hex string ID"},
+                        "level": {"type": "integer", "description": "NPC level", "default": 1},
+                        "hp": {"type": "integer", "description": "Hit points (also sets max HP)"},
+                        "attributes": {
+                            "type": "array",
+                            "description": "NPC attributes (e.g. STR, DEX, AC)",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "value": {"description": "Attribute value"},
+                                    "max": {"description": "Max value (optional)"},
+                                },
+                                "required": ["name", "value"],
+                            },
+                        },
+                        "skills": {
+                            "type": "array",
+                            "description": "NPC skills",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "value": {"description": "Skill value/modifier"},
+                                },
+                                "required": ["name", "value"],
+                            },
+                        },
+                        "abilities": {
+                            "type": "array",
+                            "description": "NPC abilities/attacks",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "attributes": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "value": {}}}},
+                                },
+                                "required": ["name"],
+                            },
+                        },
+                        "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
+                    },
+                    "required": ["world_id", "name"],
+                },
+            ),
+            Tool(
+                name="update_npc",
+                description="Update an existing NPC's name, description, or basic properties. Use for NPCs only, not player characters.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "character_id": {"type": "string", "description": "24-char hex string ID (NPC only)"},
+                        "name": {"type": "string", "description": "New name"},
+                        "description": {"type": "string", "description": "New description"},
+                        "level": {"type": "integer", "description": "New level"},
+                    },
+                    "required": ["character_id"],
+                },
+            ),
+            Tool(
                 name="create_character",
-                description="Create a new character (PC or NPC)",
+                description="DEPRECATED: Use create_npc instead. Create a new character (PC or NPC)",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -24,6 +93,60 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                         "description": {"type": "string", "description": "Character description/backstory"},
                         "is_player_character": {"type": "boolean", "description": "Is this a PC?", "default": False},
                         "location_id": {"type": "string", "description": "24-char hex string ID"},
+                    },
+                    "required": ["world_id", "name"],
+                },
+            ),
+            Tool(
+                name="create_player_character",
+                description="Create a new player character (PC) with full stats. Use when a new player joins and you have their character concept, attributes, skills, and abilities. Always creates is_player_character=true.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "world_id": {"type": "string", "description": "24-char hex string ID"},
+                        "name": {"type": "string", "description": "Character name"},
+                        "description": {"type": "string", "description": "Character description/backstory"},
+                        "location_id": {"type": "string", "description": "24-char hex string ID (where the PC starts)"},
+                        "level": {"type": "integer", "description": "Character level", "default": 1},
+                        "attributes": {
+                            "type": "array",
+                            "description": "Attributes (e.g. HP, Strength, Dexterity)",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "value": {"description": "Attribute value"},
+                                    "max": {"description": "Max value (e.g. for HP)"},
+                                },
+                                "required": ["name", "value"],
+                            },
+                        },
+                        "skills": {
+                            "type": "array",
+                            "description": "Skills/proficiencies",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "value": {"description": "Skill value/modifier"},
+                                },
+                                "required": ["name", "value"],
+                            },
+                        },
+                        "abilities": {
+                            "type": "array",
+                            "description": "Abilities (spells, features)",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "template_id": {"type": "string"},
+                                    "name": {"type": "string"},
+                                    "description": {"type": "string"},
+                                    "attributes": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "value": {}}}},
+                                },
+                                "required": ["name"],
+                            },
+                        },
                     },
                     "required": ["world_id", "name"],
                 },
@@ -40,8 +163,21 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                 },
             ),
             Tool(
+                name="update_pc_basics",
+                description="Update a player character's name or description. Use for PCs only during character creation.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "character_id": {"type": "string", "description": "24-char hex string ID (PC only)"},
+                        "name": {"type": "string", "description": "New name"},
+                        "description": {"type": "string", "description": "New description"},
+                    },
+                    "required": ["character_id"],
+                },
+            ),
+            Tool(
                 name="rename_character",
-                description="Update a character's name or description",
+                description="DEPRECATED: Use update_pc_basics or update_npc instead. Update a character's name or description",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -246,7 +382,7 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
             ),
             Tool(
                 name="deal_damage",
-                description="Deal damage to a character. Reduces HP, auto-records event, and handles 0 HP (applies 'Unconscious' status).",
+                description="Deal damage to a character. Reduces HP and handles 0 HP (applies 'Unconscious' status). Events are recorded by the Scribe.",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -254,21 +390,19 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                         "amount": {"type": "integer", "description": "Damage amount"},
                         "damage_type": {"type": "string", "description": "Type of damage (e.g., slashing, fire, psychic)", "default": "untyped"},
                         "source": {"type": "string", "description": "What caused the damage (e.g., 'Goblin attack', 'Fall')"},
-                        "log_event": {"type": "boolean", "description": "Whether to auto-record as event", "default": True},
                     },
                     "required": ["character_id", "amount"],
                 },
             ),
             Tool(
                 name="heal",
-                description="Heal a character. Restores HP (up to max), auto-records event, and removes 'Unconscious' status if HP > 0.",
+                description="Heal a character. Restores HP (up to max) and removes 'Unconscious' status if HP > 0. Events are recorded by the Scribe.",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "character_id": {"type": "string", "description": "24-char hex string ID (from create_character or load_session), NOT a name"},
                         "amount": {"type": "integer", "description": "Healing amount"},
                         "source": {"type": "string", "description": "What caused the healing (e.g., 'Healing Potion', 'Cure Wounds')"},
-                        "log_event": {"type": "boolean", "description": "Whether to auto-record as event", "default": True},
                     },
                     "required": ["character_id", "amount"],
                 },
@@ -312,11 +446,26 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                     "required": ["world_id", "enemies"],
                 },
             ),
+            Tool(
+                name="finalize_character",
+                description="Mark character creation complete. Call when the user is satisfied with their character; sets creation_in_progress to false so normal play begins.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "character_id": {"type": "string", "description": "24-char hex string ID"},
+                    },
+                    "required": ["character_id"],
+                },
+            ),
     ]
     
     handlers = {
+        "create_npc": _create_npc,
+        "update_npc": _update_npc,
         "create_character": _create_character,
+        "create_player_character": _create_player_character,
         "delete_character": _delete_character,
+        "update_pc_basics": _rename_character,  # Same implementation
         "rename_character": _rename_character,
         "move_character": _move_character,
         "set_level": _set_level,
@@ -332,13 +481,92 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
         "deal_damage": _deal_damage,
         "heal": _heal,
         "spawn_enemies": _spawn_enemies,
+        "finalize_character": _finalize_character,
     }
     
     return tools, handlers
 
 
+async def _create_npc(args: dict[str, Any]) -> list[TextContent]:
+    """Create a new NPC with optional stats."""
+    db = database.db
+    
+    # Parse attributes
+    attributes = []
+    for a in args.get("attributes", []):
+        attributes.append(Attribute(
+            name=a["name"],
+            value=a["value"],
+            max=a.get("max"),
+        ))
+    
+    # Add HP attribute if provided
+    hp = args.get("hp")
+    if hp is not None:
+        # Check if HP already in attributes
+        has_hp = any(a.name.upper() == "HP" for a in attributes)
+        if not has_hp:
+            attributes.append(Attribute(name="HP", value=hp, max=hp))
+    
+    # Parse skills
+    skills = [Skill(name=s["name"], value=s["value"]) for s in args.get("skills", [])]
+    
+    # Parse abilities
+    abilities = []
+    for ab in args.get("abilities", []):
+        attrs = [Attribute(name=x.get("name", ""), value=x.get("value")) for x in ab.get("attributes", [])]
+        abilities.append(CharacterAbility(
+            name=ab.get("name", ""),
+            description=ab.get("description", ""),
+            attributes=attrs,
+        ))
+    
+    character = Character(
+        world_id=args["world_id"],
+        name=args["name"],
+        description=args.get("description", ""),
+        is_player_character=False,  # Always false for NPCs
+        location_id=args.get("location_id"),
+        level=args.get("level", 1),
+        attributes=attributes,
+        skills=skills,
+        abilities=abilities,
+        tags=args.get("tags", []),
+    )
+    
+    result = await db.characters.insert_one(character.to_doc())
+    character.id = str(result.inserted_id)
+    
+    return [TextContent(type="text", text=f"Created NPC: {character.model_dump_json()}")]
+
+
+async def _update_npc(args: dict[str, Any]) -> list[TextContent]:
+    """Update an existing NPC's basic properties."""
+    db = database.db
+    
+    update_data = {}
+    if "name" in args:
+        update_data["name"] = args["name"]
+    if "description" in args:
+        update_data["description"] = args["description"]
+    if "level" in args:
+        update_data["level"] = args["level"]
+    
+    if update_data:
+        await db.characters.update_one(
+            {"_id": ObjectId(args["character_id"]), "is_player_character": False},
+            {"$set": update_data}
+        )
+    
+    doc = await db.characters.find_one({"_id": ObjectId(args["character_id"])})
+    if doc:
+        character = Character.from_doc(doc)
+        return [TextContent(type="text", text=f"Updated NPC: {character.model_dump_json()}")]
+    return [TextContent(type="text", text=f"NPC {args['character_id']} not found")]
+
+
 async def _create_character(args: dict[str, Any]) -> list[TextContent]:
-    """Create a new character."""
+    """Create a new character (DEPRECATED - use create_npc instead)."""
     db = database.db
     
     character = Character(
@@ -353,6 +581,51 @@ async def _create_character(args: dict[str, Any]) -> list[TextContent]:
     character.id = str(result.inserted_id)
     
     return [TextContent(type="text", text=f"Created character: {character.model_dump_json()}")]
+
+
+async def _create_player_character(args: dict[str, Any]) -> list[TextContent]:
+    """Create a new player character with full stats (level, attributes, skills, abilities)."""
+    db = database.db
+    
+    # Parse optional attributes
+    attributes = []
+    for a in args.get("attributes", []):
+        attributes.append(Attribute(
+            name=a["name"],
+            value=a["value"],
+            max=a.get("max"),
+        ))
+    
+    # Parse optional skills
+    skills = [Skill(name=s["name"], value=s["value"]) for s in args.get("skills", [])]
+    
+    # Parse optional abilities
+    abilities = []
+    for ab in args.get("abilities", []):
+        attrs = [Attribute(name=x.get("name", ""), value=x.get("value")) for x in ab.get("attributes", [])]
+        abilities.append(CharacterAbility(
+            template_id=ab.get("template_id"),
+            name=ab.get("name", ""),
+            description=ab.get("description", ""),
+            attributes=attrs,
+        ))
+    
+    character = Character(
+        world_id=args["world_id"],
+        name=args["name"],
+        description=args.get("description", ""),
+        is_player_character=True,
+        location_id=args.get("location_id"),
+        level=args.get("level", 1),
+        attributes=attributes,
+        skills=skills,
+        abilities=abilities,
+    )
+    
+    result = await db.characters.insert_one(character.to_doc())
+    character.id = str(result.inserted_id)
+    
+    return [TextContent(type="text", text=f"Created player character: {character.model_dump_json()}")]
 
 
 async def _delete_character(args: dict[str, Any]) -> list[TextContent]:
@@ -737,7 +1010,6 @@ async def _deal_damage(args: dict[str, Any]) -> list[TextContent]:
     amount = args["amount"]
     damage_type = args.get("damage_type", "untyped")
     source = args.get("source", "unknown")
-    log_event = args.get("log_event", True)
     
     # Get current character
     doc = await db.characters.find_one({"_id": character_id})
@@ -778,29 +1050,6 @@ async def _deal_damage(args: dict[str, Any]) -> list[TextContent]:
         }}
     )
     
-    # Log event
-    event_id = None
-    if log_event:
-        # Get world's current game time
-        world_doc = await db.worlds.find_one({"_id": ObjectId(character.world_id)})
-        game_time = world_doc.get("game_time", 0) if world_doc else 0
-        
-        event_desc = f"{character.name} took {amount} {damage_type} damage from {source}. HP: {old_hp} → {new_hp}."
-        if fell_unconscious:
-            event_desc += " Fell unconscious!"
-        
-        event_doc = {
-            "world_id": character.world_id,
-            "game_time": game_time,
-            "name": f"Damage: {character.name}",
-            "description": event_desc,
-            "participants": character.name,
-            "location_id": character.location_id,
-            "tags": ["combat", "damage"],
-        }
-        result = await db.events.insert_one(event_doc)
-        event_id = str(result.inserted_id)
-    
     import json
     output = {
         "character_id": str(character_id),
@@ -813,9 +1062,6 @@ async def _deal_damage(args: dict[str, Any]) -> list[TextContent]:
         "hp_max": hp_attr.max,
         "fell_unconscious": fell_unconscious,
     }
-    if event_id:
-        output["event_id"] = event_id
-    
     return [TextContent(type="text", text=json.dumps(output))]
 
 
@@ -826,7 +1072,6 @@ async def _heal(args: dict[str, Any]) -> list[TextContent]:
     character_id = ObjectId(args["character_id"])
     amount = args["amount"]
     source = args.get("source", "unknown")
-    log_event = args.get("log_event", True)
     
     # Get current character
     doc = await db.characters.find_one({"_id": character_id})
@@ -868,29 +1113,6 @@ async def _heal(args: dict[str, Any]) -> list[TextContent]:
         }}
     )
     
-    # Log event
-    event_id = None
-    if log_event and actual_healing > 0:
-        # Get world's current game time
-        world_doc = await db.worlds.find_one({"_id": ObjectId(character.world_id)})
-        game_time = world_doc.get("game_time", 0) if world_doc else 0
-        
-        event_desc = f"{character.name} healed {actual_healing} HP from {source}. HP: {old_hp} → {new_hp}."
-        if regained_consciousness:
-            event_desc += " Regained consciousness!"
-        
-        event_doc = {
-            "world_id": character.world_id,
-            "game_time": game_time,
-            "name": f"Healing: {character.name}",
-            "description": event_desc,
-            "participants": character.name,
-            "location_id": character.location_id,
-            "tags": ["healing"],
-        }
-        result = await db.events.insert_one(event_doc)
-        event_id = str(result.inserted_id)
-    
     import json
     output = {
         "character_id": str(character_id),
@@ -903,9 +1125,6 @@ async def _heal(args: dict[str, Any]) -> list[TextContent]:
         "hp_max": hp_attr.max,
         "regained_consciousness": regained_consciousness,
     }
-    if event_id:
-        output["event_id"] = event_id
-    
     return [TextContent(type="text", text=json.dumps(output))]
 
 
@@ -988,3 +1207,16 @@ async def _spawn_enemies(args: dict[str, Any]) -> list[TextContent]:
         output["added_to_encounter"] = add_to_encounter
     
     return [TextContent(type="text", text=json.dumps(output))]
+
+
+async def _finalize_character(args: dict[str, Any]) -> list[TextContent]:
+    """Set creation_in_progress to false so normal play can begin."""
+    db = database.db
+    character_id = args["character_id"]
+    result = await db.characters.update_one(
+        {"_id": ObjectId(character_id)},
+        {"$set": {"creation_in_progress": False}},
+    )
+    if result.matched_count == 0:
+        return [TextContent(type="text", text=f"Character {character_id} not found")]
+    return [TextContent(type="text", text='{"message": "Character creation complete. creation_in_progress set to false. Normal play begins from the next turn."}')]

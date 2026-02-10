@@ -1,4 +1,4 @@
-"""Query tools: get_entity, find_characters, find_items, find_locations, find_nearby_locations,
+"""Query tools: get_entity, find_characters, find_items, find_locations, search_locations, find_nearby_locations,
 find_quests, find_events, search_lore, find_factions, find_parties, get_world_summary, get_location_contents."""
 
 from typing import Any
@@ -7,6 +7,7 @@ from mcp.types import Tool, TextContent
 import json
 
 from ..db import database
+from ..utils import get_world_game_time
 from ..models import (
     World, Character, Item, ItemTemplate, AbilityTemplate,
     Location, Faction, Party, Quest, Event, Chronicle, Lore
@@ -108,6 +109,19 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                         "distance": {"type": "number", "description": "Max distance"},
                     },
                     "required": ["world_id", "x", "y", "distance"],
+                },
+            ),
+            Tool(
+                name="search_locations",
+                description="Search for locations by name or description using text matching. Use this when you need to find a location by what it's called or what it contains.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "world_id": {"type": "string", "description": "24-char hex string ID"},
+                        "query": {"type": "string", "description": "Search text to match against location name or description"},
+                        "limit": {"type": "integer", "description": "Max results", "default": 20},
+                    },
+                    "required": ["world_id", "query"],
                 },
             ),
             Tool(
@@ -250,6 +264,7 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
         "find_items": _find_items,
         "find_locations": _find_locations,
         "find_nearby_locations": _find_nearby_locations,
+        "search_locations": _search_locations,
         "find_quests": _find_quests,
         "find_events": _find_events,
         "search_lore": _search_lore,
@@ -373,6 +388,31 @@ async def _find_nearby_locations(args: dict[str, Any]) -> list[TextContent]:
     }
     
     cursor = db.locations.find(query)
+    
+    results = []
+    async for doc in cursor:
+        results.append(Location.from_doc(doc).model_dump())
+    
+    return [TextContent(type="text", text=json.dumps(results))]
+
+
+async def _search_locations(args: dict[str, Any]) -> list[TextContent]:
+    """Search for locations by name or description using regex."""
+    db = database.db
+    
+    search_query = args["query"]
+    regex_pattern = {"$regex": search_query, "$options": "i"}
+    
+    query = {
+        "world_id": args["world_id"],
+        "$or": [
+            {"name": regex_pattern},
+            {"description": regex_pattern},
+        ]
+    }
+    
+    limit = args.get("limit", 20)
+    cursor = db.locations.find(query).limit(limit)
     
     results = []
     async for doc in cursor:
@@ -585,9 +625,10 @@ async def _get_world_summary(args: dict[str, Any]) -> list[TextContent]:
     async for doc in chronicles_cursor:
         recent_chronicles.append({"id": str(doc["_id"]), "title": doc.get("title", "")})
     
+    game_time = await get_world_game_time(db, world_id)
     summary = {
         "world": world.model_dump(),
-        "game_time": world.game_time,
+        "game_time": game_time,
         "counts": {
             "characters": character_count,
             "player_characters": pc_count,
@@ -781,7 +822,7 @@ async def _load_session(args: dict[str, Any]) -> list[TextContent]:
             "members": party.members,
         })
     
-    # Build session context
+    game_time = await get_world_game_time(db, world_id)
     session = {
         "world": {
             "id": world.id,
@@ -790,8 +831,8 @@ async def _load_session(args: dict[str, Any]) -> list[TextContent]:
             "settings": world.settings,
         },
         "game_time": {
-            "raw": world.game_time,
-            "formatted": _format_game_time(world.game_time),
+            "raw": game_time,
+            "formatted": _format_game_time(game_time),
         },
         "player_characters": player_characters,
         "active_quests": active_quests,

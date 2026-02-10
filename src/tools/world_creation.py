@@ -31,6 +31,31 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                 },
             ),
             Tool(
+                name="update_world_basics",
+                description="Update an existing world's name, description, or settings. Use during world creation to set game system and tone. Does not create or delete worlds.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "world_id": {"type": "string", "description": "24-char hex string ID"},
+                        "name": {"type": "string", "description": "World name"},
+                        "description": {"type": "string", "description": "World description"},
+                        "settings": {"type": "object", "description": "Game settings and rules (e.g. system, resolution)"},
+                    },
+                    "required": ["world_id"],
+                },
+            ),
+            Tool(
+                name="start_game",
+                description="Mark world creation complete. Call when the user is satisfied with the world; sets creation_in_progress to false so normal play (Accountant, Scribe) runs.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "world_id": {"type": "string", "description": "24-char hex string ID"},
+                    },
+                    "required": ["world_id"],
+                },
+            ),
+            Tool(
                 name="set_lore",
                 description="Create, update, or delete a lore entry (history, legends, world-building)",
                 inputSchema={
@@ -218,6 +243,8 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
     
     handlers = {
         "set_world": _set_world,
+        "update_world_basics": _update_world_basics,
+        "start_game": _start_game,
         "set_lore": _set_lore,
         "set_location": _set_location,
         "set_faction": _set_faction,
@@ -271,6 +298,43 @@ async def _set_world(args: dict[str, Any]) -> list[TextContent]:
         result = await db.worlds.insert_one(world.to_doc())
         world.id = str(result.inserted_id)
         return [TextContent(type="text", text=f"Created world: {world.model_dump_json()}")]
+
+
+async def _update_world_basics(args: dict[str, Any]) -> list[TextContent]:
+    """Update an existing world's name, description, or settings only."""
+    db = database.db
+    world_id = args["world_id"]
+    update_data = {}
+    if "name" in args:
+        update_data["name"] = args["name"]
+    if "description" in args:
+        update_data["description"] = args["description"]
+    if "settings" in args:
+        update_data["settings"] = args["settings"]
+    if not update_data:
+        return [TextContent(type="text", text='{"message": "No fields to update; provide name, description, or settings."}')]
+    result = await db.worlds.update_one(
+        {"_id": ObjectId(world_id)},
+        {"$set": update_data},
+    )
+    if result.matched_count == 0:
+        return [TextContent(type="text", text=f"World {world_id} not found")]
+    doc = await db.worlds.find_one({"_id": ObjectId(world_id)})
+    world = World.from_doc(doc)
+    return [TextContent(type="text", text=f"Updated world basics: {world.model_dump_json()}")]
+
+
+async def _start_game(args: dict[str, Any]) -> list[TextContent]:
+    """Set creation_in_progress to false so the game can begin (Accountant and Scribe will run)."""
+    db = database.db
+    world_id = args["world_id"]
+    result = await db.worlds.update_one(
+        {"_id": ObjectId(world_id)},
+        {"$set": {"creation_in_progress": False}},
+    )
+    if result.matched_count == 0:
+        return [TextContent(type="text", text=f"World {world_id} not found")]
+    return [TextContent(type="text", text='{"message": "Game started. creation_in_progress set to false. Normal play (Accountant, Scribe) will run from the next turn."}')]
 
 
 async def _set_lore(args: dict[str, Any]) -> list[TextContent]:

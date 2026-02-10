@@ -6,7 +6,8 @@ from bson import ObjectId
 from mcp.types import Tool, TextContent
 
 from ..db import database
-from ..models import Encounter, Combatant, Character, World
+from ..utils import get_world_game_time
+from ..models import Encounter, Combatant, Character
 
 
 def get_tools() -> tuple[list[Tool], dict[str, callable]]:
@@ -108,14 +109,13 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
         ),
         Tool(
             name="end_encounter",
-            description="End an encounter and optionally record a summary",
+            description="End an encounter with optional summary and outcome. Events are recorded by the Scribe.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "encounter_id": {"type": "string", "description": "24-char hex string ID"},
                     "summary": {"type": "string", "description": "Summary of what happened"},
                     "outcome": {"type": "string", "description": "victory, defeat, fled, negotiated, etc."},
-                    "record_event": {"type": "boolean", "description": "Record as an event", "default": True},
                 },
                 "required": ["encounter_id"],
             },
@@ -184,11 +184,8 @@ async def _start_encounter(args: dict[str, Any]) -> list[TextContent]:
     
     world_id = args["world_id"]
     
-    # Get current game time
-    world_doc = await db.worlds.find_one({"_id": ObjectId(world_id)})
-    if not world_doc:
-        return [TextContent(type="text", text=f"World {world_id} not found")]
-    world = World.from_doc(world_doc)
+    # Get current game time from events (not world doc)
+    game_time = await get_world_game_time(db, world_id)
     
     # Create encounter
     encounter = Encounter(
@@ -197,7 +194,7 @@ async def _start_encounter(args: dict[str, Any]) -> list[TextContent]:
         location_id=args.get("location_id"),
         encounter_type=args.get("encounter_type", "combat"),
         status="active",
-        started_at=world.game_time,
+        started_at=game_time,
         tags=args.get("tags", []),
     )
     
@@ -397,12 +394,7 @@ async def _next_turn(args: dict[str, Any]) -> list[TextContent]:
         {"$set": {"current_turn": new_turn, "round_number": new_round}}
     )
     
-    # Advance game time if requested (6 seconds per turn)
-    if advance_time:
-        await db.worlds.update_one(
-            {"_id": ObjectId(encounter.world_id)},
-            {"$inc": {"game_time": 6}}
-        )
+    # Note: advance_time deprecated - game time is now tracked via events (Scribe records combat rounds)
     
     # Get current combatant info
     current = turn_order[new_turn]
@@ -435,7 +427,7 @@ async def _next_turn(args: dict[str, Any]) -> list[TextContent]:
             "statuses": [s.name for s in char.statuses] if char else [],
         },
         "turn_order": turn_order_display,
-        "time_advanced": 6 if advance_time else 0,
+        "time_advanced": 0,  # Game time now tracked via events (Scribe records combat rounds)
     }))]
 
 
@@ -446,7 +438,6 @@ async def _end_encounter(args: dict[str, Any]) -> list[TextContent]:
     encounter_id = args["encounter_id"]
     summary = args.get("summary", "")
     outcome = args.get("outcome", "")
-    record_event = args.get("record_event", True)
     
     # Get encounter
     doc = await db.encounters.find_one({"_id": ObjectId(encounter_id)})
@@ -455,10 +446,10 @@ async def _end_encounter(args: dict[str, Any]) -> list[TextContent]:
     
     encounter = Encounter.from_doc(doc)
     
-    # Get current game time
-    world_doc = await db.worlds.find_one({"_id": ObjectId(encounter.world_id)})
-    world = World.from_doc(world_doc) if world_doc else None
-    ended_at = world.game_time if world else None
+    # Derive ended_at from encounter (started_at + rounds * 6s)
+    ended_at = None
+    if encounter.started_at is not None:
+        ended_at = encounter.started_at + (encounter.round_number * 6)
     
     # Update encounter
     update = {
@@ -474,32 +465,9 @@ async def _end_encounter(args: dict[str, Any]) -> list[TextContent]:
         {"$set": update}
     )
     
-    # Record event if requested
-    event_id = None
-    if record_event and world:
-        from ..models import Event
-        
-        event_name = f"Encounter: {encounter.name}" if encounter.name else "Encounter ended"
-        event_desc = summary if summary else f"A {encounter.encounter_type} encounter ended after {encounter.round_number} rounds."
-        if outcome:
-            event_desc += f" Outcome: {outcome}."
-        
-        event = Event(
-            world_id=encounter.world_id,
-            name=event_name,
-            description=event_desc,
-            game_time=ended_at,
-            location_id=encounter.location_id,
-            participants=[c.character_id for c in encounter.combatants],
-            tags=["encounter", encounter.encounter_type] + encounter.tags,
-        )
-        result = await db.events.insert_one(event.to_doc())
-        event_id = str(result.inserted_id)
-    
     return [TextContent(type="text", text=json.dumps({
         "ended": encounter.name,
         "rounds": encounter.round_number,
         "outcome": outcome,
         "summary": summary,
-        "event_id": event_id,
     }))]
