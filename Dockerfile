@@ -9,10 +9,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src/ ./src/
 
-# Copy tests and config
-COPY tests/ ./tests/
-COPY pytest.ini .
-
 # Expose SSE port
 EXPOSE 8080
 

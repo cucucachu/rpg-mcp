@@ -1,0 +1,42 @@
+steps:
+  # Build Docker image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rpg-mcp:$COMMIT_SHA'
+      - -t
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rpg-mcp:latest'
+      - .
+    id: build
+
+  # Push image
+  - name: gcr.io/cloud-builders/docker
+    args: [push, '--all-tags', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rpg-mcp']
+    id: push
+
+  # Deploy to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - rpg-mcp
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rpg-mcp:$COMMIT_SHA
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --timeout=600
+      - --min-instances=1
+      - --max-instances=3
+      - --memory=512Mi
+      - --set-secrets=MONGODB_URI=mongodb-uri:latest
+      - --set-env-vars=DB_NAME=rpg_mcp
+
+substitutions:
+  _REGION: us-central1
+  _REPO: rpg
+
+options:
+  logging: CLOUD_LOGGING_ONLY
