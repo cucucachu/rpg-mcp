@@ -109,6 +109,9 @@ async def health_check(request):
 
 
 # Create Starlette app
+# Note: Starlette's Mount causes 307 redirects for paths without trailing slash
+# MCP spec doesn't mandate a specific path, so we use /mcp/ (with slash) 
+# and ensure clients use the trailing slash to avoid redirects
 app = Starlette(
     debug=True,
     lifespan=lifespan,
