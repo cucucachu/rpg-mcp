@@ -1,4 +1,4 @@
-"""MCP Server entry point with SSE transport."""
+"""MCP Server entry point with Streamable HTTP transport."""
 
 import asyncio
 import logging
@@ -6,11 +6,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from mcp.server import Server
-from mcp.server.sse import SseServerTransport
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import Tool, TextContent
 from starlette.applications import Starlette
 from starlette.routing import Route, Mount
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 import uvicorn
 
 from .config import settings
@@ -27,8 +27,12 @@ mcp_server = Server("rpg-mcp")
 _all_tools: list[Tool] = []
 _tool_handlers: dict[str, callable] = {}
 
-# SSE transport - shared across requests
-sse_transport = SseServerTransport("/messages/")
+# Streamable HTTP session manager - stateless, JSON-only responses
+session_manager = StreamableHTTPSessionManager(
+    app=mcp_server,
+    stateless=True,
+    json_response=True,
+)
 
 
 def register_tools():
@@ -89,7 +93,9 @@ async def lifespan(app: Starlette):
     # Register tools
     register_tools()
     
-    yield
+    # Initialize session manager
+    async with session_manager.run():
+        yield
     
     # Shutdown
     logger.info("Disconnecting from MongoDB...")
@@ -102,30 +108,13 @@ async def health_check(request):
     return JSONResponse({"status": "healthy", "service": "rpg-mcp"})
 
 
-async def handle_sse(request):
-    """Handle SSE connections for MCP."""
-    async with sse_transport.connect_sse(
-        request.scope,
-        request.receive,
-        request._send
-    ) as streams:
-        await mcp_server.run(
-            streams[0],
-            streams[1],
-            mcp_server.create_initialization_options()
-        )
-    # Return empty response to avoid NoneType error when client disconnects
-    return Response()
-
-
 # Create Starlette app
 app = Starlette(
     debug=True,
     lifespan=lifespan,
     routes=[
         Route("/health", health_check, methods=["GET"]),
-        Route("/sse", handle_sse, methods=["GET"]),
-        Mount("/messages/", app=sse_transport.handle_post_message),
+        Mount("/mcp", app=session_manager.handle_request),
     ]
 )
 
