@@ -18,6 +18,7 @@ class Event(BaseModel):
     description: str = ""
     participants: str = ""  # freeform
     changes: str = ""  # freeform
+    mechanics: str = ""  # dice rolls and mechanical outcomes
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     
