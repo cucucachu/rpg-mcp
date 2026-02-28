@@ -93,6 +93,7 @@ def get_tools() -> tuple[list[Tool], dict[str, callable]]:
                         "location_id": {"type": "string", "description": "24-char hex string ID"},
                         "participants": {"type": "string", "description": "Who was involved"},
                         "changes": {"type": "string", "description": "What changed"},
+                        "mechanics": {"type": "string", "description": "Dice rolls and mechanical outcomes, e.g. 'Perception check: 1d20+3 = 6'"},
                         "tags": {"type": "array", "items": {"type": "string"}},
                     },
                     "required": ["world_id", "name", "description", "game_time"],
@@ -278,6 +279,7 @@ async def _record_event(args: dict[str, Any]) -> list[TextContent]:
         location_id=args.get("location_id"),
         participants=args.get("participants", ""),
         changes=args.get("changes", ""),
+        mechanics=args.get("mechanics", ""),
         tags=args.get("tags", []),
     )
     
